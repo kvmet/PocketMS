@@ -6,6 +6,7 @@
 
 import auth.AuthGate
 import kotlinx.browser.document
+import kotlinx.browser.localStorage
 import kotlinx.browser.window
 import mono.app.MonoSketchApplication
 import mono.remote.RemoteClient
@@ -42,15 +43,30 @@ private fun showStartupError(err: Throwable) {
         <div class="max-w-md p-6 rounded-md shadow-lg bg-zinc-800 border border-zinc-700">
           <h1 class="text-lg font-semibold mb-2">Could not sync with the server</h1>
           <p class="text-sm text-zinc-300 mb-4">$message</p>
-          <p class="text-xs text-zinc-400 mb-4">Your local data has not been touched. Refresh to try again.</p>
-          <button id="startup-error-retry" type="button"
-                  class="px-3 py-1.5 rounded bg-blue-600 text-white text-sm hover:bg-blue-500">
-            Retry
-          </button>
+          <p class="text-xs text-zinc-400 mb-4">Retry uses the same local state. Reset local cache discards local drawings and refetches everything from the server. Pick reset if retrying does not help.</p>
+          <div class="flex gap-2">
+            <button id="startup-error-retry" type="button"
+                    class="px-3 py-1.5 rounded bg-blue-600 text-white text-sm hover:bg-blue-500">
+              Retry
+            </button>
+            <button id="startup-error-reset" type="button"
+                    class="px-3 py-1.5 rounded border border-zinc-600 text-zinc-200 text-sm hover:bg-zinc-700">
+              Reset local cache
+            </button>
+          </div>
         </div>
     """.trimIndent()
     document.body?.appendChild(container)
+
     document.getElementById("startup-error-retry")?.addEventListener("click", {
+        window.location.reload()
+    })
+    document.getElementById("startup-error-reset")?.addEventListener("click", {
+        // Forcing pms.sync.user into the mismatch state is enough: the
+        // next boot's reconciler will wipe the workspace localStorage and
+        // SyncMetadata.objects before pulling from the server.
+        localStorage.removeItem("pms.sync.user")
+        localStorage.removeItem("pms.sync.objects")
         window.location.reload()
     })
 }
