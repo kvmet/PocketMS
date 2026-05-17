@@ -115,20 +115,27 @@ class AuthGate(private val client: RemoteClient) {
 
     private fun mountLogoutButton() {
         val nav = document.getElementById("main-nav") ?: return
-        if (document.getElementById("auth-gate-logout") != null) return
+        if (document.getElementById("auth-gate-account") != null) return
+
+        // The nav is a flex row: [#nav-brand] [#nav-toolbar (flex-grow:1)].
+        // Appending a third flex sibling lets the signout sit at the natural
+        // right edge without overlapping the compose-managed toolbar group.
+        val account = document.createElement("div") as HTMLDivElement
+        account.id = "auth-gate-account"
+        account.className = "flex items-center gap-2 pr-3 text-xs"
 
         val btn = document.createElement("button") as HTMLButtonElement
         btn.id = "auth-gate-logout"
         btn.type = "button"
         btn.textContent = "Sign out"
         btn.className =
-            "absolute right-3 top-1/2 -translate-y-1/2 text-xs px-2 py-1 rounded " +
-                "border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+            "px-2 py-1 rounded border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
         btn.title = client.currentSession?.email ?: ""
         btn.onclick = {
             client.logout()
             window.location.reload()
         }
-        nav.appendChild(btn)
+        account.appendChild(btn)
+        nav.appendChild(account)
     }
 }
