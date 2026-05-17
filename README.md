@@ -65,14 +65,14 @@ Collections provisioned by migrations under
 
 ```bash
 docker build -t pocketms .
-docker run --rm -p 8090:8090 -v pocketms_data:/pb/pb_data pocketms
+docker run --rm -p 8090:8090 -v pocketms_data:/pb_data pocketms
 ```
 
 Open <http://localhost:8090/_/> to create the first admin and then
 provision a user account from the admin UI under the `users` collection.
 Open <http://localhost:8090/> to use the editor.
 
-The persistent volume at `/pb/pb_data` holds the SQLite file and any
+The persistent volume at `/pb_data` holds the SQLite file and any
 uploaded assets. Lose it and you lose everything; back it up.
 
 ## Coolify
@@ -80,7 +80,7 @@ uploaded assets. Lose it and you lose everything; back it up.
 - **Base directory:** repo root
 - **Dockerfile location:** `Dockerfile`
 - **Container port:** `8090`
-- **Persistent volume:** mount at `/pb/pb_data`
+- **Persistent volume:** mount at `/pb_data`
 
 ## Development
 

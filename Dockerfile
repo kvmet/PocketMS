@@ -64,7 +64,7 @@ COPY server/pb_hooks /pb/pb_hooks
 COPY server/pb_migrations /pb/pb_migrations
 
 EXPOSE 8090
-VOLUME ["/pb/pb_data"]
+VOLUME ["/pb_data"]
 
 ENTRYPOINT ["/usr/local/bin/pocketbase"]
-CMD ["serve", "--http=0.0.0.0:8090", "--dir=/pb/pb_data", "--publicDir=/pb/pb_public", "--hooksDir=/pb/pb_hooks", "--migrationsDir=/pb/pb_migrations"]
+CMD ["serve", "--http=0.0.0.0:8090", "--dir=/pb_data", "--publicDir=/pb/pb_public", "--hooksDir=/pb/pb_hooks", "--migrationsDir=/pb/pb_migrations"]
