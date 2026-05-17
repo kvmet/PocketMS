@@ -1,0 +1,31 @@
+# Build outputs
+build/
+**/build/
+.gradle/
+kotlin-js-store/
+
+# Node
+node_modules/
+**/node_modules/
+
+# IDE / VCS
+.idea/
+.vscode/
+.git/
+.gitignore
+
+# Python (dev server only)
+Pipfile
+Pipfile.lock
+.venv/
+
+# Local PocketBase data (runtime state, never baked into the image)
+server/pb_data/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Docs / misc
+*.md
+LICENSE
