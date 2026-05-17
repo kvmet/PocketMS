@@ -6,6 +6,7 @@ package mono.remote.sync
 
 import kotlin.js.Date
 import kotlin.js.Promise
+import kotlinx.browser.window
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -13,23 +14,30 @@ import kotlinx.serialization.json.intOrNull
 import mono.remote.RemoteClient
 import mono.remote.RemoteDrawing
 import mono.remote.RemoteDrawingInput
+import mono.remote.RemoteError
 import mono.store.dao.workspace.WorkspaceDao
+import mono.store.dao.workspace.WorkspaceObjectDao
 import mono.store.manager.StorageDocument
 import mono.store.manager.StoreKeys
 
 /**
- * Boot-time reconciler between the local workspace cache and PocketBase.
+ * Reconciler between the local workspace cache and PocketBase.
  *
- * Run once after authentication succeeds and before the editor starts.
- * On completion the local cache reflects whatever the server holds for
- * the authenticated user, and per-drawing sync state ({pbRecordId,
- * loadedVersion}) is recorded so subsequent writes can use optimistic
- * concurrency.
+ * Lifecycle:
+ *   1. [start] runs once after authentication. It enforces the
+ *      "server defers in any ambiguity" boot rule (see SyncMetadata)
+ *      and resolves only after the cache has caught up with the
+ *      server.
+ *   2. After [start] resolves, change/remove listeners are installed
+ *      on WorkspaceObjectDao and WorkspaceDao. Every editor write
+ *      triggers a debounced push to PocketBase with optimistic
+ *      concurrency. Every editor delete triggers a server-side
+ *      delete.
  *
- * The reconciliation rule is "server defers in any ambiguity":
- *   - If the last reconciled user matches the current user, local is
- *     trusted; drawings without a pbRecordId are pushed up.
- *   - Otherwise local is wiped and rebuilt from the server.
+ * Conflicts (HTTP 409) pause auto-push for the affected drawing and
+ * record the server's current version in [pausedConflicts]. A later
+ * UI commit will surface them; for now the user can still edit
+ * locally but writes do not propagate until the conflict is resolved.
  */
 class RemoteSyncManager(
     private val client: RemoteClient,
@@ -37,6 +45,10 @@ class RemoteSyncManager(
 ) {
     private val workspaceDocument: StorageDocument =
         StorageDocument.get(StoreKeys.WORKSPACE)
+
+    private val pendingTimers = mutableMapOf<String, Int>()
+    private val pushingInFlight = mutableSetOf<String>()
+    private val pausedConflicts = mutableMapOf<String, Int>()
 
     fun start(): Promise<Unit> {
         val userId = client.currentSession?.userId
@@ -65,18 +77,104 @@ class RemoteSyncManager(
             }
             serverAppIds
         }.then { serverAppIds ->
-            if (sameUser) {
-                pushLocalOnly(serverAppIds)
-            } else {
-                Promise.resolve(Unit)
-            }
+            if (sameUser) pushLocalOnly(serverAppIds) else Promise.resolve(Unit)
         }.then {
             SyncMetadata.lastSyncUser = userId
+            installListeners()
             Unit
         }
     }
 
-    // ---------- wipe / mirror ----------
+    // ---------- listeners ----------
+
+    private fun installListeners() {
+        WorkspaceObjectDao.changeListener = { dao -> onLocalChange(dao.objectId) }
+        WorkspaceDao.removeListener = { objectId -> onLocalRemove(objectId) }
+    }
+
+    private fun onLocalChange(objectId: String) {
+        if (objectId in pausedConflicts) return
+        scheduleDebounce(objectId)
+    }
+
+    private fun onLocalRemove(objectId: String) {
+        pendingTimers.remove(objectId)?.let { window.clearTimeout(it) }
+        pausedConflicts.remove(objectId)
+        val info = SyncMetadata.get(objectId)
+        SyncMetadata.remove(objectId)
+        val recordId = info?.pbRecordId ?: return
+        client.deleteDrawing(recordId).catch { err ->
+            // If the record is already gone (e.g. raced with another
+            // client), that is the desired end state. Anything else we
+            // surface to the console; we have no good way to retry a
+            // delete that the local side has already forgotten.
+            console.warn("DELETE failed for $objectId:", err)
+        }
+    }
+
+    private fun scheduleDebounce(objectId: String) {
+        pendingTimers[objectId]?.let { window.clearTimeout(it) }
+        val firstWrite = SyncMetadata.get(objectId)?.pbRecordId == null
+        val delay = if (firstWrite) FIRST_WRITE_DEBOUNCE_MS else NORMAL_DEBOUNCE_MS
+        pendingTimers[objectId] = window.setTimeout({ pushNow(objectId) }, delay)
+    }
+
+    private fun pushNow(objectId: String) {
+        pendingTimers.remove(objectId)
+        if (objectId in pushingInFlight) {
+            // A push is already running; reschedule so the new state
+            // gets a chance after the current request settles.
+            scheduleDebounce(objectId)
+            return
+        }
+        if (objectId in pausedConflicts) return
+
+        val ownerId = client.currentSession?.userId ?: return
+        val input = buildInputFromLocal(objectId, ownerId) ?: return
+        val info = SyncMetadata.get(objectId)
+        val recordId = info?.pbRecordId
+
+        pushingInFlight += objectId
+        val push: Promise<RemoteDrawing> = if (recordId == null) {
+            client.createDrawing(input)
+        } else {
+            client.updateDrawing(recordId, info.loadedVersion, input)
+        }
+        push.then { result ->
+            SyncMetadata.set(
+                objectId,
+                DrawingSyncInfo(
+                    pbRecordId = result.id,
+                    loadedVersion = result.version,
+                ),
+            )
+            Unit
+        }.catch { err ->
+            handlePushError(objectId, err)
+        }.then {
+            pushingInFlight -= objectId
+            Unit
+        }
+    }
+
+    private fun handlePushError(objectId: String, err: Throwable) {
+        when (err) {
+            is RemoteError.VersionConflict -> {
+                pausedConflicts[objectId] = err.currentVersion
+                console.warn(
+                    "Sync paused for $objectId: server is at version ${err.currentVersion}"
+                )
+            }
+            is RemoteError.Unauthenticated -> {
+                console.warn("Auth lost; reload required to re-sync")
+            }
+            else -> {
+                console.error("Push failed for $objectId:", err)
+            }
+        }
+    }
+
+    // ---------- boot wipe / mirror ----------
 
     private fun wipeWorkspace() {
         workspaceDao.getObjects().map { it.objectId }.toList().forEach {
@@ -100,9 +198,6 @@ class RemoteSyncManager(
     }
 
     private fun offsetToLocalString(offsetJson: kotlinx.serialization.json.JsonElement): String {
-        // The DAO persists offset as "left|top". The server payload is
-        // { "left": <int>, "top": <int> }. Fall back to "0|0" if the
-        // server stored something unexpected (e.g. an empty new drawing).
         val obj = offsetJson as? JsonObject ?: return "0|0"
         val left = (obj["left"] as? JsonPrimitive)?.intOrNull ?: 0
         val top = (obj["top"] as? JsonPrimitive)?.intOrNull ?: 0
@@ -115,7 +210,7 @@ class RemoteSyncManager(
         return if (parsed.isNaN()) null else parsed
     }
 
-    // ---------- push local-only drawings ----------
+    // ---------- push helpers ----------
 
     private fun pushLocalOnly(serverAppIds: Set<String>): Promise<Unit> {
         val ownerId = client.currentSession?.userId ?: return Promise.resolve(Unit)
@@ -166,6 +261,9 @@ class RemoteSyncManager(
     }
 
     companion object {
+        private const val NORMAL_DEBOUNCE_MS = 2000
+        private const val FIRST_WRITE_DEBOUNCE_MS = 500
+
         private val json = Json {
             ignoreUnknownKeys = true
             encodeDefaults = true
