@@ -12,6 +12,8 @@ import org.w3c.dom.HTMLButtonElement
 import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLFormElement
 import org.w3c.dom.HTMLInputElement
+import org.w3c.dom.HTMLParagraphElement
+import org.w3c.dom.events.KeyboardEvent
 
 /**
  * Stands between the browser load event and [MonoSketchApplication] startup.
@@ -34,18 +36,27 @@ class AuthGate(private val client: RemoteClient) {
         val container = document.createElement("div") as HTMLDivElement
         container.id = "auth-gate"
         container.className =
-            "fixed inset-0 z-50 flex items-center justify-center bg-[var(--workspace-bg-color)]"
+            "fixed inset-0 z-50 flex items-center justify-center bg-zinc-950"
+        // Defense in depth on the form's submission path:
+        //   - method="post" so even if our handler fails, secrets are not
+        //     appended to the URL as a query string.
+        //   - action="javascript:void(0)" so a stray submission goes nowhere.
+        //   - The button is type="button" rather than type="submit", which
+        //     removes the natural HTML form-submit path entirely. We bind
+        //     onclick and a separate Enter handler.
         container.innerHTML = """
-            <form id="auth-gate-form" class="w-80 p-6 rounded-md shadow-lg bg-[var(--shapetool-bg-color)] border border-[var(--shapetool-main-divider-color)]" autocomplete="off">
-              <h1 class="text-lg font-semibold mb-4 text-[var(--shapetool-label-color)]">Sign in</h1>
-              <label class="block text-xs mb-1 text-[var(--shapetool-label-color)]" for="auth-gate-email">Email</label>
+            <form id="auth-gate-form"
+                  class="w-80 p-6 rounded-md shadow-lg bg-zinc-800 border border-zinc-700"
+                  method="post" action="javascript:void(0)" autocomplete="on">
+              <h1 class="text-lg font-semibold mb-4 text-zinc-100">Sign in</h1>
+              <label class="block text-xs mb-1 text-zinc-400" for="auth-gate-email">Email</label>
               <input id="auth-gate-email" name="email" type="email" autocomplete="username" required
-                     class="w-full mb-3 px-2 py-1 rounded bg-[var(--workspace-bg-color)] border border-[var(--shapetool-main-divider-color)] text-[var(--shapetool-label-color)] focus:outline-none focus:border-blue-500" />
-              <label class="block text-xs mb-1 text-[var(--shapetool-label-color)]" for="auth-gate-password">Password</label>
+                     class="w-full mb-3 px-2 py-1.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+              <label class="block text-xs mb-1 text-zinc-400" for="auth-gate-password">Password</label>
               <input id="auth-gate-password" name="password" type="password" autocomplete="current-password" required
-                     class="w-full mb-4 px-2 py-1 rounded bg-[var(--workspace-bg-color)] border border-[var(--shapetool-main-divider-color)] text-[var(--shapetool-label-color)] focus:outline-none focus:border-blue-500" />
-              <button id="auth-gate-submit" type="submit"
-                      class="w-full py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">Sign in</button>
+                     class="w-full mb-4 px-2 py-1.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500" />
+              <button id="auth-gate-submit" type="button"
+                      class="w-full py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">Sign in</button>
               <p id="auth-gate-error" class="mt-3 text-xs text-red-400 hidden"></p>
             </form>
         """.trimIndent()
@@ -55,12 +66,11 @@ class AuthGate(private val client: RemoteClient) {
         val emailInput = document.getElementById("auth-gate-email") as HTMLInputElement
         val passwordInput = document.getElementById("auth-gate-password") as HTMLInputElement
         val submit = document.getElementById("auth-gate-submit") as HTMLButtonElement
-        val errorEl = document.getElementById("auth-gate-error") as HTMLDivElement
+        val errorEl = document.getElementById("auth-gate-error") as HTMLParagraphElement
 
         emailInput.focus()
 
-        form.onsubmit = handler@{ event ->
-            event.preventDefault()
+        val attempt = {
             errorEl.classList.add("hidden")
             submit.disabled = true
             submit.textContent = "Signing in..."
@@ -81,8 +91,26 @@ class AuthGate(private val client: RemoteClient) {
                     }
                     errorEl.classList.remove("hidden")
                 }
-            null
+            Unit
         }
+
+        submit.addEventListener("click", { attempt() })
+
+        // Belt-and-suspenders: hard-stop any natural form submission, then
+        // route Enter on the inputs to the same attempt path.
+        form.addEventListener("submit", { event ->
+            event.preventDefault()
+            event.stopPropagation()
+        })
+        val enterHandler = { event: org.w3c.dom.events.Event ->
+            val ke = event as KeyboardEvent
+            if (ke.key == "Enter") {
+                event.preventDefault()
+                attempt()
+            }
+        }
+        emailInput.addEventListener("keydown", enterHandler)
+        passwordInput.addEventListener("keydown", enterHandler)
     }
 
     private fun mountLogoutButton() {
@@ -95,8 +123,7 @@ class AuthGate(private val client: RemoteClient) {
         btn.textContent = "Sign out"
         btn.className =
             "absolute right-3 top-1/2 -translate-y-1/2 text-xs px-2 py-1 rounded " +
-                "border border-[var(--shapetool-main-divider-color)] " +
-                "text-[var(--shapetool-label-color)] hover:bg-[var(--shapetool-bg-color)]"
+                "border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
         btn.title = client.currentSession?.email ?: ""
         btn.onclick = {
             client.logout()
