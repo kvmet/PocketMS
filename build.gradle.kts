@@ -26,6 +26,7 @@ repositories {
 dependencies {
     implementation(projects.app)
     implementation(projects.lifecycle)
+    implementation(projects.remoteClient)
 
     testImplementation(libs.kotlin.test.js)
 }
