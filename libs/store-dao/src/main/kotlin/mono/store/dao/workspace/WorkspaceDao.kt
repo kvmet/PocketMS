@@ -36,6 +36,7 @@ class WorkspaceDao private constructor(
         //  If the object is currently open, choose a latest opened object and make it active.
         //  If no object left, create a blank workspace.
         objectDaos.remove(objectId)
+        removeListener?.invoke(objectId)
     }
 
     /**
@@ -51,5 +52,12 @@ class WorkspaceDao private constructor(
 
     companion object {
         val instance: WorkspaceDao by lazy { WorkspaceDao(StorageDocument.get(WORKSPACE)) }
+
+        /**
+         * Hook for outside-the-DAO observers (e.g. RemoteSyncManager) to
+         * react to deletions. Fires after the object's storage entries
+         * have been cleared.
+         */
+        var removeListener: ((String) -> Unit)? = null
     }
 }

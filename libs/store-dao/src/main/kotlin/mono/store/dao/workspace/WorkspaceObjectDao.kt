@@ -36,7 +36,10 @@ class WorkspaceObjectDao internal constructor(
             val top = topString.toIntOrNull() ?: return Point.ZERO
             return Point(left, top)
         }
-        set(value) = objectDocument.set(OBJECT_OFFSET, "${value.left}|${value.top}")
+        set(value) {
+            objectDocument.set(OBJECT_OFFSET, "${value.left}|${value.top}")
+            notifyChange()
+        }
 
     var rootGroup: SerializableGroup?
         get() {
@@ -49,6 +52,7 @@ class WorkspaceObjectDao internal constructor(
                 objectDocument.set(OBJECT_CONTENT, json)
             }
             lastModifiedTimestampMillis = currentTimeMillis()
+            notifyChange()
         }
 
     var connectors: List<SerializableLineConnector>
@@ -59,6 +63,7 @@ class WorkspaceObjectDao internal constructor(
         set(value) {
             val json = ShapeSerializationUtil.toConnectorsJson(value)
             objectDocument.set(OBJECT_CONNECTORS, json)
+            notifyChange()
         }
 
     var name: String
@@ -66,6 +71,7 @@ class WorkspaceObjectDao internal constructor(
         set(value) {
             objectDocument.set(OBJECT_NAME, value)
             lastModifiedTimestampMillis = currentTimeMillis()
+            notifyChange()
         }
 
     var lastModifiedTimestampMillis: Double
@@ -96,7 +102,19 @@ class WorkspaceObjectDao internal constructor(
         }
     }
 
+    private fun notifyChange() {
+        changeListener?.invoke(this)
+    }
+
     companion object {
         const val DEFAULT_NAME = "Undefined"
+
+        /**
+         * Hook for outside-the-DAO observers (e.g. RemoteSyncManager) to
+         * react to writes. Fires after each setter has finished writing to
+         * storage. Kept here rather than per-instance because object DAOs
+         * are lazily created and the observer is a singleton.
+         */
+        var changeListener: ((WorkspaceObjectDao) -> Unit)? = null
     }
 }

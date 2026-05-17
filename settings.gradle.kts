@@ -20,6 +20,7 @@ val moduleMap = mapOf(
     "monobitmap-manager" to "libs/monobitmap-manager",
     "monoboard" to "libs/monoboard",
     "remote-client" to "libs/remote-client",
+    "remote-sync" to "libs/remote-sync",
     "shape" to "libs/shape",
     "shape-clipboard" to "libs/shape-clipboard",
     "shape-interaction-bound" to "libs/shape-interaction-bound",
