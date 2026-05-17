@@ -57,8 +57,8 @@ WORKDIR /pb
 # Static site is served from pb_public; JS hooks and schema migrations are
 # version-controlled alongside the Dockerfile.
 COPY --from=build /src/build/dist/js/productionExecutable/ /pb/pb_public/
-COPY pb_hooks /pb/pb_hooks
-COPY pb_migrations /pb/pb_migrations
+COPY server/pb_hooks /pb/pb_hooks
+COPY server/pb_migrations /pb/pb_migrations
 
 EXPOSE 8090
 VOLUME ["/pb/pb_data"]
