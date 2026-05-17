@@ -29,9 +29,9 @@ COPY tailwind.config.js postcss.config.js ./
 COPY src ./src
 COPY app/src ./app/src
 
-# Production browser distribution.
-# Output lands at /src/build/dist/js/productionExecutable
-RUN ./gradlew --no-daemon -Dorg.gradle.parallel=false browserDistribution
+# Production browser distribution. Output lands at /src/build/distributions
+RUN ./gradlew --no-daemon -Dorg.gradle.parallel=false browserDistribution \
+ && ls -la build/distributions
 
 # ---------- Stage 2: PocketBase runtime ----------
 FROM alpine:3.20 AS runtime
@@ -56,7 +56,7 @@ WORKDIR /pb
 
 # Static site is served from pb_public; JS hooks and schema migrations are
 # version-controlled alongside the Dockerfile.
-COPY --from=build /src/build/dist/js/productionExecutable/ /pb/pb_public/
+COPY --from=build /src/build/distributions/ /pb/pb_public/
 COPY server/pb_hooks /pb/pb_hooks
 COPY server/pb_migrations /pb/pb_migrations
 
