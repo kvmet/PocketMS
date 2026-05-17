@@ -50,6 +50,9 @@ RUN apk add --no-cache ca-certificates unzip curl \
  && unzip /tmp/pb.zip -d /usr/local/bin \
  && rm /tmp/pb.zip \
  && chmod +x /usr/local/bin/pocketbase \
+ && mkdir -p /pb/licenses \
+ && curl -fsSL -o /pb/licenses/POCKETBASE-LICENSE.md \
+      "https://raw.githubusercontent.com/pocketbase/pocketbase/v${PB_VERSION}/LICENSE.md" \
  && apk del unzip curl
 
 WORKDIR /pb
