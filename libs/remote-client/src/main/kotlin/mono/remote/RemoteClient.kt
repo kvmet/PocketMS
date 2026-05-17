@@ -178,13 +178,15 @@ class RemoteClient(private val baseUrl: String = "") {
         }
     }
 
-    private fun parseConflictVersion(body: String): Int? = try {
-        val obj = json.parseToJsonElement(body) as? JsonObject ?: return null
-        // PocketBase wraps custom hook errors as { "code": ..., "data": {...} }.
-        val data = obj["data"] as? JsonObject
-        (data?.get("current_version") as? JsonElement)?.jsonPrimitive?.intOrNull
-    } catch (_: Throwable) {
-        null
+    private fun parseConflictVersion(body: String): Int? {
+        return try {
+            val obj = json.parseToJsonElement(body) as? JsonObject ?: return null
+            // PocketBase wraps custom hook errors as { "code": ..., "data": {...} }.
+            val data = obj["data"] as? JsonObject
+            (data?.get("current_version") as? JsonElement)?.jsonPrimitive?.intOrNull
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     private fun loadSession(): AuthSession? {

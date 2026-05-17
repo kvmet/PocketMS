@@ -8,7 +8,7 @@ package mono.remote
  * Errors thrown (as Promise rejections) by [RemoteClient]. Callers should
  * branch on the sealed subtype rather than inspecting messages.
  */
-sealed class RemoteError(message: String) : Throwable(message) {
+sealed class RemoteError(message: String, cause: Throwable? = null) : Throwable(message, cause) {
     /** No token, expired token, or server rejected the token. */
     object Unauthenticated : RemoteError("unauthenticated")
 
@@ -20,8 +20,8 @@ sealed class RemoteError(message: String) : Throwable(message) {
         RemoteError("version_conflict (server is at $currentVersion)")
 
     /** Network failure, server unreachable, CORS, etc. */
-    data class Network(val cause: Throwable) :
-        RemoteError("network: ${cause.message ?: cause::class.simpleName}")
+    class Network(cause: Throwable) :
+        RemoteError("network: ${cause.message ?: cause::class.simpleName}", cause)
 
     /** Any other non-2xx response. */
     data class Other(val status: Int, val body: String) :
