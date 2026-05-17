@@ -83,6 +83,23 @@ class RemoteClient(private val baseUrl: String = "") {
         }
     }
 
+    /**
+     * Same as [listDrawings] but returns full drawings including content,
+     * connectors, and offset. Used by boot-time reconciliation in
+     * RemoteSyncManager.
+     */
+    fun listDrawingsFull(): Promise<List<RemoteDrawing>> =
+        request(
+            method = "GET",
+            path = "/api/collections/drawings/records?perPage=500&sort=-updated",
+        ).then { text ->
+            val resp = json.decodeFromString(
+                PbListResponse.serializer(RemoteDrawing.serializer()),
+                text,
+            )
+            resp.items
+        }
+
     fun getDrawing(appId: String): Promise<RemoteDrawing> {
         val filter = encode("app_id=\"$appId\"")
         return request(

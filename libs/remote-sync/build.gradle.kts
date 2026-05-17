@@ -15,6 +15,10 @@ dependencies {
     implementation(libs.kotlin.stdlib.js)
     implementation(libs.kotlinx.serialization.json)
 
+    implementation(projects.remoteClient)
+    implementation(projects.storeDao)
+    implementation(projects.storeManager)
+
     testImplementation(libs.kotlin.test.js)
 }
 
