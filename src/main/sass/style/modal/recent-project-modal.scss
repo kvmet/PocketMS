@@ -89,6 +89,25 @@ $themeMap: (
         &:first-child {
             margin-top: 0;
         }
+
+        &.collapsible {
+            cursor: pointer;
+            user-select: none;
+
+            &:hover {
+                opacity: 0.9;
+            }
+        }
+
+        .folder-toggle {
+            display: inline-flex;
+            align-items: center;
+            transition: transform 0.1s ease;
+        }
+
+        &.collapsed .folder-toggle {
+            transform: rotate(-90deg);
+        }
     }
 
     .item {

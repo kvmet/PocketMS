@@ -149,23 +149,57 @@ private fun ProjectList(
         addAll(grouped.keys.filter { it.isNotEmpty() }.sorted())
     }
 
+    val collapsed = remember { mutableStateOf(emptySet<String>()) }
+    // When the user is actively filtering, expanding everything is more
+    // useful than hiding matches behind a folder header.
+    val effectiveCollapsed = if (filter.isEmpty()) collapsed.value else emptySet()
+
     Div(attrs = { classes("list") }) {
         for (folder in orderedFolders) {
             if (folder.isNotEmpty()) {
-                FolderHeader(folder)
+                FolderHeader(
+                    path = folder,
+                    isCollapsed = folder in effectiveCollapsed,
+                    isToggleable = filter.isEmpty(),
+                ) {
+                    collapsed.value = collapsed.value.toMutableSet().apply {
+                        if (folder in this) remove(folder) else add(folder)
+                    }
+                }
             }
-            for (project in grouped.getValue(folder)) {
-                val isRemoveConfirming = project.id == requestingRemoveProjectId
-                ProjectContent(project, isRemoveConfirming, onAction)
+            if (folder !in effectiveCollapsed) {
+                for (project in grouped.getValue(folder)) {
+                    val isRemoveConfirming = project.id == requestingRemoveProjectId
+                    ProjectContent(project, isRemoveConfirming, onAction)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun FolderHeader(path: String) {
-    Div(attrs = { classes("folder-header") }) {
-        Icon { Icons.Folder() }
+private fun FolderHeader(
+    path: String,
+    isCollapsed: Boolean,
+    isToggleable: Boolean,
+    onToggle: () -> Unit
+) {
+    Div(
+        attrs = {
+            classes(
+                "folder-header",
+                "collapsible" to isToggleable,
+                "collapsed" to isCollapsed
+            )
+            if (isToggleable) {
+                onConsumeClick { onToggle() }
+            }
+        }
+    ) {
+        Span(attrs = { classes("folder-toggle") }) { Icons.ChevronDown(10) }
+        Icon {
+            if (isCollapsed) Icons.Folder() else Icons.FolderOpen()
+        }
         Span(attrs = { classes("name") }) { Text(path) }
     }
 }
