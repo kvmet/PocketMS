@@ -29,6 +29,7 @@ dependencies {
     implementation(projects.remoteClient)
     implementation(projects.remoteSync)
     implementation(projects.storeDao)
+    implementation(projects.uuid)
 
     testImplementation(libs.kotlin.test.js)
 }

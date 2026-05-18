@@ -10,7 +10,9 @@ import kotlinx.browser.window
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
+import mono.common.currentTimeMillis
 import mono.remote.RemoteClient
 import mono.remote.RemoteDrawing
 import mono.remote.RemoteDrawingInput
@@ -19,6 +21,7 @@ import mono.store.dao.workspace.WorkspaceDao
 import mono.store.dao.workspace.WorkspaceObjectDao
 import mono.store.manager.StorageDocument
 import mono.store.manager.StoreKeys
+import mono.uuid.UUID
 
 /**
  * Reconciler between the local workspace cache and PocketBase.
@@ -49,6 +52,7 @@ class RemoteSyncManager(
     private val pendingTimers = mutableMapOf<String, Int>()
     private val pushingInFlight = mutableSetOf<String>()
     private val pausedConflicts = mutableMapOf<String, Int>()
+    private val offlinePushIds = mutableSetOf<String>()
 
     /**
      * Notified whenever the set of paused (conflicting) drawings
@@ -57,7 +61,21 @@ class RemoteSyncManager(
      */
     var conflictListener: ((Map<String, Int>) -> Unit)? = null
 
+    /**
+     * Notified whenever the coarse sync status changes (Synced /
+     * Pending / Offline). Conflicts are reported via [conflictListener]
+     * and are not part of this signal.
+     */
+    var statusListener: ((SyncStatus) -> Unit)? = null
+
     val activeConflicts: Map<String, Int> get() = pausedConflicts.toMap()
+
+    val syncStatus: SyncStatus
+        get() = when {
+            offlinePushIds.isNotEmpty() -> SyncStatus.Offline
+            pendingTimers.isNotEmpty() || pushingInFlight.isNotEmpty() -> SyncStatus.Pending
+            else -> SyncStatus.Synced
+        }
 
     fun start(): Promise<Unit> {
         val userId = client.currentSession?.userId
@@ -137,6 +155,7 @@ class RemoteSyncManager(
         val firstWrite = SyncMetadata.get(objectId)?.pbRecordId == null
         val delay = if (firstWrite) FIRST_WRITE_DEBOUNCE_MS else NORMAL_DEBOUNCE_MS
         pendingTimers[objectId] = window.setTimeout({ pushNow(objectId) }, delay)
+        notifyStatusListener()
     }
 
     private fun pushNow(objectId: String) {
@@ -168,11 +187,18 @@ class RemoteSyncManager(
                     loadedVersion = result.version,
                 ),
             )
+            offlinePushIds.remove(objectId)
             Unit
         }.catch { err ->
+            if (err is RemoteError.Network) {
+                offlinePushIds.add(objectId)
+            } else {
+                offlinePushIds.remove(objectId)
+            }
             handlePushError(objectId, err)
         }.then {
             pushingInFlight -= objectId
+            notifyStatusListener()
             Unit
         }
     }
@@ -247,8 +273,81 @@ class RemoteSyncManager(
         scheduleDebounce(objectId)
     }
 
+    /**
+     * User picked "save mine as new" in the conflict modal. Copies the
+     * conflicting drawing's current local state to a fresh app id with
+     * a " (mine)" name suffix and reverts the original drawing's local
+     * state to whatever is on the server. The new drawing is then
+     * debounced for an initial create push.
+     *
+     * Returns the new app id; callers typically reload the page with
+     * ?id=<newId> so the editor opens the new copy cleanly.
+     */
+    fun saveAsNewAndRevert(objectId: String): Promise<String> {
+        val newAppId = UUID.generate()
+        copyLocalToNewAppId(oldId = objectId, newId = newAppId)
+        SyncMetadata.set(
+            newAppId,
+            DrawingSyncInfo(pbRecordId = null, loadedVersion = 0),
+        )
+        return reloadFromServer(objectId).then {
+            scheduleDebounce(newAppId)
+            newAppId
+        }
+    }
+
+    private fun copyLocalToNewAppId(oldId: String, newId: String) {
+        val oldDoc = workspaceDocument.childDocument(oldId)
+        val newDoc = workspaceDocument.childDocument(newId)
+
+        val name = oldDoc.get(StoreKeys.OBJECT_NAME) ?: "Untitled"
+        newDoc.set(StoreKeys.OBJECT_NAME, "$name (mine)")
+
+        val contentRaw = oldDoc.get(StoreKeys.OBJECT_CONTENT)
+        if (contentRaw != null) {
+            newDoc.set(StoreKeys.OBJECT_CONTENT, rewriteContentId(contentRaw, newId))
+        }
+        oldDoc.get(StoreKeys.OBJECT_CONNECTORS)?.let {
+            newDoc.set(StoreKeys.OBJECT_CONNECTORS, it)
+        }
+        oldDoc.get(StoreKeys.OBJECT_OFFSET)?.let {
+            newDoc.set(StoreKeys.OBJECT_OFFSET, it)
+        }
+        val now = currentTimeMillis().toString()
+        newDoc.set(StoreKeys.OBJECT_LAST_MODIFIED, now)
+        newDoc.set(StoreKeys.OBJECT_LAST_OPENED, now)
+    }
+
+    /**
+     * The serialized content blob embeds the root group's id under the
+     * "i" key. When duplicating a drawing under a fresh app id we
+     * rewrite this so the deserialized root's id matches the storage
+     * key it lives under; otherwise the editor's in-memory root would
+     * still report the old id and subsequent DAO writes would go to
+     * the wrong drawing.
+     */
+    private fun rewriteContentId(contentRaw: String, newId: String): String {
+        return try {
+            val element = json.parseToJsonElement(contentRaw) as? JsonObject
+                ?: return contentRaw
+            val rebuilt = buildJsonObject {
+                for ((key, value) in element) {
+                    if (key != "i") put(key, value)
+                }
+                put("i", JsonPrimitive(newId))
+            }
+            json.encodeToString(JsonObject.serializer(), rebuilt)
+        } catch (_: Throwable) {
+            contentRaw
+        }
+    }
+
     private fun notifyConflictListener() {
         conflictListener?.invoke(pausedConflicts.toMap())
+    }
+
+    private fun notifyStatusListener() {
+        statusListener?.invoke(syncStatus)
     }
 
     private fun recoverStaleRecord(objectId: String) {

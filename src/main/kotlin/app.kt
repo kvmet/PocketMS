@@ -12,7 +12,8 @@ import mono.app.MonoSketchApplication
 import mono.remote.RemoteClient
 import mono.remote.sync.RemoteSyncManager
 import org.w3c.dom.HTMLDivElement
-import sync.ConflictBanner
+import sync.ConflictModal
+import sync.SyncStatusBadge
 
 fun main() {
     val client = RemoteClient()
@@ -20,7 +21,8 @@ fun main() {
         val syncManager = RemoteSyncManager(client)
         syncManager.start()
             .then {
-                ConflictBanner(syncManager).mount()
+                ConflictModal(syncManager).mount()
+                SyncStatusBadge(syncManager).mount()
                 val application = MonoSketchApplication()
                 if (document.readyState.toString() == "loading") {
                     window.onload = { application.onStart() }
