@@ -159,31 +159,60 @@ class RemoteSyncManager(
 
     private fun handlePushError(objectId: String, err: Throwable) {
         when (err) {
-            is RemoteError.VersionConflict -> {
-                pausedConflicts[objectId] = err.currentVersion
-                console.warn(
-                    "Sync paused for $objectId: server is at version ${err.currentVersion}"
-                )
-            }
-            is RemoteError.NotFound -> {
-                // Stale pbRecordId, e.g. the server-side record was
-                // deleted out-of-band. Drop the id and reschedule; the
-                // next push will go through the create path.
-                console.warn(
-                    "Record gone for $objectId; clearing local mapping and recreating"
-                )
-                SyncMetadata.set(
-                    objectId,
-                    DrawingSyncInfo(pbRecordId = null, loadedVersion = 0),
-                )
-                scheduleDebounce(objectId)
-            }
+            is RemoteError.VersionConflict -> handleConflict(objectId, err.currentVersion)
+            is RemoteError.NotFound -> recoverStaleRecord(objectId)
             is RemoteError.Unauthenticated -> {
                 console.warn("Auth lost; reload required to re-sync")
             }
             else -> {
                 console.error("Push failed for $objectId:", err)
             }
+        }
+    }
+
+    /**
+     * A 409 can mean either the genuine "server is ahead of us" case or
+     * the phantom case where the server's record is gone (the hook
+     * still fires for missing records with an empty record, reporting
+     * version 0). When current < expected, the server is "behind" us,
+     * which can only happen if the underlying record was deleted or our
+     * local mapping is stale. Refetch by app_id to find truth.
+     */
+    private fun handleConflict(objectId: String, currentVersion: Int) {
+        val expected = SyncMetadata.get(objectId)?.loadedVersion ?: 0
+        if (currentVersion < expected) {
+            recoverStaleRecord(objectId)
+        } else {
+            pausedConflicts[objectId] = currentVersion
+            console.warn(
+                "Sync paused for $objectId: server is at version $currentVersion"
+            )
+        }
+    }
+
+    private fun recoverStaleRecord(objectId: String) {
+        console.warn("Recovering stale mapping for $objectId; refetching by app_id")
+        client.getDrawing(objectId).then { found ->
+            SyncMetadata.set(
+                objectId,
+                DrawingSyncInfo(
+                    pbRecordId = found.id,
+                    loadedVersion = found.version,
+                ),
+            )
+            scheduleDebounce(objectId)
+            Unit
+        }.catch { err ->
+            if (err is RemoteError.NotFound) {
+                SyncMetadata.set(
+                    objectId,
+                    DrawingSyncInfo(pbRecordId = null, loadedVersion = 0),
+                )
+                scheduleDebounce(objectId)
+            } else {
+                console.error("Recovery failed for $objectId:", err)
+            }
+            Unit
         }
     }
 

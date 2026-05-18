@@ -108,7 +108,7 @@ class RemoteClient(private val baseUrl: String = "") {
                 text,
             )
             resp.items.firstOrNull()
-                ?: throw RemoteError.Other(404, "no drawing with app_id=$appId")
+                ?: throw RemoteError.NotFound("no drawing with app_id=$appId")
         }
     }
 
