@@ -48,7 +48,11 @@ internal fun showRenameProjectModal(
                 }
             }
             onFocusOut { dismiss(name.value) }
-            onChange { name.value = it.value }
+            // onInput rather than onChange so name.value tracks every
+            // keystroke. onChange only fires on commit (blur), which
+            // means an Enter-key dismiss reads the stale initial value
+            // because keydown is delivered before change.
+            onInput { name.value = it.value }
 
             ref {
                 it.focus()
