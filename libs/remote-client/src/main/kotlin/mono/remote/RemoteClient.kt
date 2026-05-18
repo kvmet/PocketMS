@@ -6,14 +6,11 @@ package mono.remote
 
 import kotlin.js.Promise
 import kotlinx.browser.localStorage
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.w3c.dom.get
 import org.w3c.dom.set
 import org.w3c.fetch.RequestInit
@@ -187,6 +184,7 @@ class RemoteClient(private val baseUrl: String = "") {
                 logout()
                 throw RemoteError.Unauthenticated
             }
+            404 -> throw RemoteError.NotFound(body)
             409 -> {
                 val current = parseConflictVersion(body)
                 throw RemoteError.VersionConflict(currentVersion = current ?: -1)
@@ -198,9 +196,11 @@ class RemoteClient(private val baseUrl: String = "") {
     private fun parseConflictVersion(body: String): Int? {
         return try {
             val obj = json.parseToJsonElement(body) as? JsonObject ?: return null
-            // PocketBase wraps custom hook errors as { "code": ..., "data": {...} }.
-            val data = obj["data"] as? JsonObject
-            (data?.get("current_version") as? JsonElement)?.jsonPrimitive?.intOrNull
+            // The hook encodes the server's current version into the
+            // message string as "version_conflict:current=<n>".
+            val message = (obj["message"] as? JsonPrimitive)?.contentOrNull
+                ?: return null
+            CONFLICT_RE.find(message)?.groupValues?.get(1)?.toIntOrNull()
         } catch (_: Throwable) {
             null
         }
@@ -226,6 +226,8 @@ class RemoteClient(private val baseUrl: String = "") {
 
     companion object {
         private const val SESSION_KEY = "pms.auth"
+
+        private val CONFLICT_RE = Regex("current=(\\d+)")
 
         private val json = Json {
             ignoreUnknownKeys = true

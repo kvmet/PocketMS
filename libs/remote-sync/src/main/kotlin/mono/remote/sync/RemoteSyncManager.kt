@@ -165,6 +165,19 @@ class RemoteSyncManager(
                     "Sync paused for $objectId: server is at version ${err.currentVersion}"
                 )
             }
+            is RemoteError.NotFound -> {
+                // Stale pbRecordId, e.g. the server-side record was
+                // deleted out-of-band. Drop the id and reschedule; the
+                // next push will go through the create path.
+                console.warn(
+                    "Record gone for $objectId; clearing local mapping and recreating"
+                )
+                SyncMetadata.set(
+                    objectId,
+                    DrawingSyncInfo(pbRecordId = null, loadedVersion = 0),
+                )
+                scheduleDebounce(objectId)
+            }
             is RemoteError.Unauthenticated -> {
                 console.warn("Auth lost; reload required to re-sync")
             }

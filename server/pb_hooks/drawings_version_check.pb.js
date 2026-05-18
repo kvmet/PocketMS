@@ -27,10 +27,12 @@ onRecordUpdateRequest((e) => {
 
     const current = e.record.getInt("version");
     if (current !== expected) {
-        throw new ApiError(409, "version_conflict", {
-            current_version: current,
-            expected_version: expected,
-        });
+        // ApiError's data argument expects a per-field validation-errors
+        // map; passing plain ints there makes PB rewrite them as
+        // "validation_invalid_value" stubs and the client cannot recover
+        // the actual current version. Encode it in the message string
+        // instead and have the client parse it out.
+        throw new ApiError(409, "version_conflict:current=" + current);
     }
 
     e.record.set("version", current + 1);
