@@ -9,7 +9,10 @@ package mono.html.modal.compose
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.browser.localStorage
 import mono.browser.manager.BrowserManager
+import org.w3c.dom.get
+import org.w3c.dom.set
 import mono.html.modal.TooltipPosition
 import mono.html.modal.tooltip
 import mono.ui.compose.components.Icons
@@ -149,31 +152,53 @@ private fun ProjectList(
         addAll(grouped.keys.filter { it.isNotEmpty() }.sorted())
     }
 
-    val collapsed = remember { mutableStateOf(emptySet<String>()) }
-    // When the user is actively filtering, expanding everything is more
-    // useful than hiding matches behind a folder header.
-    val effectiveCollapsed = if (filter.isEmpty()) collapsed.value else emptySet()
+    // Track the EXPANDED set (inverse of collapsed) so brand-new
+    // folders the user has never touched default to collapsed. Persisted
+    // to localStorage so the per-device preference survives reloads.
+    val expanded = remember { mutableStateOf(loadExpandedFolders()) }
+
+    // When the user is actively filtering, expand everything regardless
+    // of stored state so matches inside collapsed folders are visible.
+    val isFiltering = filter.isNotEmpty()
 
     Div(attrs = { classes("list") }) {
         for (folder in orderedFolders) {
+            val isExpanded = isFiltering || folder.isEmpty() || folder in expanded.value
             if (folder.isNotEmpty()) {
                 FolderHeader(
                     path = folder,
-                    isCollapsed = folder in effectiveCollapsed,
-                    isToggleable = filter.isEmpty(),
+                    isCollapsed = !isExpanded,
+                    isToggleable = !isFiltering,
                 ) {
-                    collapsed.value = collapsed.value.toMutableSet().apply {
+                    val next = expanded.value.toMutableSet().apply {
                         if (folder in this) remove(folder) else add(folder)
                     }
+                    expanded.value = next
+                    saveExpandedFolders(next)
                 }
             }
-            if (folder !in effectiveCollapsed) {
+            if (isExpanded) {
                 for (project in grouped.getValue(folder)) {
                     val isRemoveConfirming = project.id == requestingRemoveProjectId
                     ProjectContent(project, isRemoveConfirming, onAction)
                 }
             }
         }
+    }
+}
+
+private const val EXPANDED_FOLDERS_KEY = "pms.ui.expanded-folders"
+
+private fun loadExpandedFolders(): Set<String> {
+    val raw = localStorage[EXPANDED_FOLDERS_KEY] ?: return emptySet()
+    return raw.split('\n').filter { it.isNotEmpty() }.toSet()
+}
+
+private fun saveExpandedFolders(folders: Set<String>) {
+    if (folders.isEmpty()) {
+        localStorage.removeItem(EXPANDED_FOLDERS_KEY)
+    } else {
+        localStorage[EXPANDED_FOLDERS_KEY] = folders.joinToString("\n")
     }
 }
 
