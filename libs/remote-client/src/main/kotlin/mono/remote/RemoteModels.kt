@@ -25,10 +25,12 @@ data class AuthSession(
  * fields are passed as raw [JsonElement] so we never re-parse the output
  * of MonoSketch's existing shape serializer.
  *
- * [version] is required by the PocketBase schema and the server-side
- * hook is the authoritative writer (forces 0 on create, current+1 on
- * update). The client always sends 0; the field exists only to satisfy
- * schema validation, which runs before the hook can set a default.
+ * Note: this intentionally has no `version` field. PocketBase merges
+ * the request body into the record before hooks fire, so sending
+ * version=0 on update would clobber the DB's current version inside
+ * the hook's view of e.record and break optimistic concurrency. The
+ * server-side hook is the sole writer for that field (forces 0 on
+ * create, current+1 on update).
  */
 @Serializable
 data class RemoteDrawingInput(
@@ -39,7 +41,6 @@ data class RemoteDrawingInput(
     val content: JsonElement,
     val connectors: JsonElement,
     val offset: JsonElement,
-    val version: Int = 0,
 )
 
 /** A drawing record as returned by PocketBase. */
