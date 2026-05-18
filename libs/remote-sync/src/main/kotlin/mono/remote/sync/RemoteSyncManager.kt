@@ -75,14 +75,25 @@ class RemoteSyncManager(
             val serverAppIds = HashSet<String>(drawings.size)
             for (drawing in drawings) {
                 serverAppIds += drawing.appId
-                mirrorToLocal(drawing)
-                SyncMetadata.set(
-                    drawing.appId,
-                    DrawingSyncInfo(
-                        pbRecordId = drawing.id,
-                        loadedVersion = drawing.version,
-                    ),
-                )
+                // In same-user mode, do not stomp local content with the
+                // server's copy. The user may have unsynced edits that
+                // have not yet debounced through. Their loadedVersion in
+                // metadata is preserved so the next push either succeeds
+                // (server unchanged) or 409s (server diverged), which is
+                // caught by the conflict banner.
+                val localIsTrusted = sameUser &&
+                    localHasContent(drawing.appId) &&
+                    SyncMetadata.get(drawing.appId)?.pbRecordId != null
+                if (!localIsTrusted) {
+                    mirrorToLocal(drawing)
+                    SyncMetadata.set(
+                        drawing.appId,
+                        DrawingSyncInfo(
+                            pbRecordId = drawing.id,
+                            loadedVersion = drawing.version,
+                        ),
+                    )
+                }
             }
             serverAppIds
         }.then { serverAppIds ->
@@ -273,6 +284,11 @@ class RemoteSyncManager(
             workspaceDao.removeObject(it)
         }
         workspaceDocument.remove(StoreKeys.LAST_OPEN)
+    }
+
+    private fun localHasContent(appId: String): Boolean {
+        val objectDocument = workspaceDocument.childDocument(appId)
+        return objectDocument.get(StoreKeys.OBJECT_CONTENT) != null
     }
 
     private fun mirrorToLocal(drawing: RemoteDrawing) {
