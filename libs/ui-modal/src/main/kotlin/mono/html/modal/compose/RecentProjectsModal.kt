@@ -27,7 +27,12 @@ import org.w3c.dom.Element
 private typealias ProjectManagementAction = (ProjectManagementActionItem) -> Unit
 private typealias ProjectSelectAction = (ProjectItem, isRemoved: Boolean) -> Unit
 
-class ProjectItem(val id: String, val name: String, val isOpening: Boolean)
+class ProjectItem(
+    val id: String,
+    val name: String,
+    val folderPath: String = "",
+    val isOpening: Boolean,
+)
 
 fun showRecentProjectsModal(
     projectItems: List<ProjectItem>,
@@ -119,29 +124,49 @@ private fun ProjectList(
 ) {
     val filteredProjects = if (filter.isNotEmpty()) {
         projects
-            .filter { it.name.contains(filter, ignoreCase = true) }
+            .filter {
+                it.name.contains(filter, ignoreCase = true) ||
+                    it.folderPath.contains(filter, ignoreCase = true)
+            }
             .sortedBy { it.name }
     } else {
         projects
     }
 
-    if (filteredProjects.isNotEmpty()) {
-        Div(
-            attrs = { classes("list") }
-        ) {
-            for (project in filteredProjects) {
+    if (filteredProjects.isEmpty()) {
+        Div(attrs = { classes("no-item") }) {
+            Span { Text("Not found") }
+        }
+        return
+    }
+
+    // Group by folder path so the user has a sense of structure
+    // without needing a tree widget. Root drawings (empty path) come
+    // first; remaining folders are listed alphabetically.
+    val grouped = filteredProjects.groupBy { it.folderPath }
+    val orderedFolders = buildList {
+        if (grouped.containsKey("")) add("")
+        addAll(grouped.keys.filter { it.isNotEmpty() }.sorted())
+    }
+
+    Div(attrs = { classes("list") }) {
+        for (folder in orderedFolders) {
+            if (folder.isNotEmpty()) {
+                FolderHeader(folder)
+            }
+            for (project in grouped.getValue(folder)) {
                 val isRemoveConfirming = project.id == requestingRemoveProjectId
                 ProjectContent(project, isRemoveConfirming, onAction)
             }
         }
-    } else {
-        Div(
-            attrs = { classes("no-item") }
-        ) {
-            Span {
-                Text("Not found")
-            }
-        }
+    }
+}
+
+@Composable
+private fun FolderHeader(path: String) {
+    Div(attrs = { classes("folder-header") }) {
+        Icon { Icons.Folder() }
+        Span(attrs = { classes("name") }) { Text(path) }
     }
 }
 

@@ -19,6 +19,7 @@ sealed interface OneTimeActionType {
      */
     sealed interface ProjectAction : OneTimeActionType {
         data class RenameCurrentProject(val newName: String) : ProjectAction
+        data class MoveCurrentProject(val newFolderPath: String) : ProjectAction
         object NewProject : ProjectAction
         object ExportSelectedShapes : ProjectAction
         data class SwitchProject(val projectId: String) : ProjectAction

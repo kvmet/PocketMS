@@ -45,6 +45,13 @@ class NavBarViewController(
     ) { (_, _, rootId) -> workspaceDao.getObject(rootId as String).name }
         .toState(lifecycleOwner)
 
+    private val folderPathState: State<String> = combineLiveData(
+        applicationActiveStateLiveData,
+        environmentUpdateLiveData,
+        currentRootIdLiveData
+    ) { (_, _, rootId) -> workspaceDao.getObject(rootId as String).folderPath }
+        .toState(lifecycleOwner)
+
     private val selectedMouseActionState: State<RetainableActionType> =
         actionManager.retainableActionLiveData.toState(lifecycleOwner)
 
@@ -67,7 +74,7 @@ class NavBarViewController(
                         actionManager::setOneTimeAction
                     )
                 }
-                WorkingFileToolbar(projectNameState) {
+                WorkingFileToolbar(projectNameState, folderPathState) {
                     actionManager.setOneTimeAction(it)
                     // Notify the change in storage
                     // Note: This won't work if updating the name is done concurrently

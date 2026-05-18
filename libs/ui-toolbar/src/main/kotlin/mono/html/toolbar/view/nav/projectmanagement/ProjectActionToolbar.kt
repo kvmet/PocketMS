@@ -61,7 +61,14 @@ private fun onManageProjectClick(
     onActionSelected: (OneTimeActionType) -> Unit
 ) {
     val projects = workspaceDao.getObjects()
-        .map { ProjectItem(it.objectId, it.name, it.objectId == openingProjectId) }
+        .map {
+            ProjectItem(
+                id = it.objectId,
+                name = it.name,
+                folderPath = it.folderPath,
+                isOpening = it.objectId == openingProjectId,
+            )
+        }
         .toList()
     showRecentProjectsModal(
         projects,

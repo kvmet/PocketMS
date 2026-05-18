@@ -23,6 +23,7 @@ object StoreKeys {
     const val OBJECT_OFFSET = "offset"
     const val OBJECT_LAST_MODIFIED = "last-modified"
     const val OBJECT_LAST_OPENED = "last-opened"
+    const val OBJECT_FOLDER_PATH = "folder-path"
 
     const val PATH_SEPARATOR = "/"
 

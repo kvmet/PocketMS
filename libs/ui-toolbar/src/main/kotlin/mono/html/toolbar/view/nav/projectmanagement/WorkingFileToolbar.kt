@@ -13,6 +13,7 @@ import mono.actionmanager.OneTimeActionType
 import mono.html.modal.compose.DropDownItem
 import mono.html.modal.compose.DropDownMenu
 import mono.html.toolbar.view.nav.projectmanagement.DropDownItemAction.Forwarding
+import mono.html.toolbar.view.nav.projectmanagement.DropDownItemAction.Move
 import mono.html.toolbar.view.nav.projectmanagement.DropDownItemAction.NewProject
 import mono.html.toolbar.view.nav.projectmanagement.DropDownItemAction.Rename
 import mono.ui.compose.components.Icons
@@ -26,6 +27,7 @@ private const val WORKING_PROJECT_ID = "working-project"
 @Composable
 internal fun WorkingFileToolbar(
     projectNameState: State<String>,
+    folderPathState: State<String>,
     onActionSelected: (OneTimeActionType) -> Unit
 ) {
     CurrentProject(projectNameState.value) { element ->
@@ -39,6 +41,8 @@ internal fun WorkingFileToolbar(
                 }
 
                 Rename -> renameProject(projectNameState, onActionSelected)
+
+                Move -> moveProject(folderPathState, onActionSelected)
             }
         }
     }
@@ -82,6 +86,7 @@ private fun CurrentProject(title: String, showProjectMenu: (Element) -> Unit) {
 private fun showWorkingFileMenu(anchor: Element, onItemSelected: (DropDownItemAction) -> Unit) {
     val items = listOf(
         DropDownItem.Text("Rename", Rename),
+        DropDownItem.Text("Move…", Move),
         DropDownItem.Text(
             "Save As...",
             Forwarding(OneTimeActionType.ProjectAction.SaveShapesAs)
@@ -111,6 +116,20 @@ internal fun renameProject(
     }
 }
 
+internal fun moveProject(
+    folderPathState: State<String>,
+    onActionSelected: (OneTimeActionType) -> Unit
+) {
+    showMoveProjectModal(
+        folderPathState.value,
+        "#$WORKING_PROJECT_ID"
+    ) { newPath ->
+        if (newPath != null) {
+            onActionSelected(OneTimeActionType.ProjectAction.MoveCurrentProject(newPath))
+        }
+    }
+}
+
 /**
  * A sealed interface for dropdown menu items of working file.
  */
@@ -118,4 +137,5 @@ private sealed interface DropDownItemAction {
     class Forwarding(val actionType: OneTimeActionType) : DropDownItemAction
     object NewProject : DropDownItemAction
     object Rename : DropDownItemAction
+    object Move : DropDownItemAction
 }

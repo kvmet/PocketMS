@@ -50,6 +50,9 @@ internal class FileRelatedActionsHelper(
             is OneTimeActionType.ProjectAction.RenameCurrentProject ->
                 renameProject(projectAction.newName)
 
+            is OneTimeActionType.ProjectAction.MoveCurrentProject ->
+                moveProject(projectAction.newFolderPath)
+
             OneTimeActionType.ProjectAction.SaveShapesAs ->
                 saveCurrentShapesToFile()
 
@@ -91,6 +94,19 @@ internal class FileRelatedActionsHelper(
         workspaceDao.getObject(currentRootId).name = newName
         environment.shapeManager.notifyProjectUpdate()
     }
+
+    private fun moveProject(newFolderPath: String) {
+        val currentRootId = environment.shapeManager.root.id
+        workspaceDao.getObject(currentRootId).folderPath = normalizeFolderPath(newFolderPath)
+        environment.shapeManager.notifyProjectUpdate()
+    }
+
+    private fun normalizeFolderPath(input: String): String =
+        input.trim()
+            .trim('/')
+            .split('/')
+            .filter { it.isNotBlank() }
+            .joinToString("/") { it.trim() }
 
     private fun saveCurrentShapesToFile() {
         val currentRoot = environment.shapeManager.root

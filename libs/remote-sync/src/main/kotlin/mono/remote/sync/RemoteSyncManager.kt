@@ -396,6 +396,7 @@ class RemoteSyncManager(
         objectDocument.set(StoreKeys.OBJECT_CONTENT, drawing.content.toString())
         objectDocument.set(StoreKeys.OBJECT_CONNECTORS, drawing.connectors.toString())
         objectDocument.set(StoreKeys.OBJECT_OFFSET, offsetToLocalString(drawing.offset))
+        objectDocument.set(StoreKeys.OBJECT_FOLDER_PATH, drawing.folderPath)
 
         val updatedMs = parseIsoToMillis(drawing.updated)
         if (updatedMs != null) {
@@ -448,6 +449,7 @@ class RemoteSyncManager(
             objectDocument.get(StoreKeys.OBJECT_CONNECTORS) ?: "[]"
         val offsetRaw = objectDocument.get(StoreKeys.OBJECT_OFFSET) ?: "0|0"
         val name = objectDocument.get(StoreKeys.OBJECT_NAME) ?: "Untitled"
+        val folderPath = objectDocument.get(StoreKeys.OBJECT_FOLDER_PATH) ?: ""
 
         val parts = offsetRaw.split("|")
         val left = parts.getOrNull(0)?.toIntOrNull() ?: 0
@@ -460,7 +462,7 @@ class RemoteSyncManager(
             appId = objectId,
             owner = ownerId,
             name = name,
-            folderPath = "",
+            folderPath = folderPath,
             content = contentJson,
             connectors = connectorsJson,
             offset = offsetJson,

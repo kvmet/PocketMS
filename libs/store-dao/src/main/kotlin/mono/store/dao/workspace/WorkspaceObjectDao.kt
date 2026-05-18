@@ -12,6 +12,7 @@ import mono.shape.serialization.ShapeSerializationUtil
 import mono.store.manager.StorageDocument
 import mono.store.manager.StoreKeys.OBJECT_CONNECTORS
 import mono.store.manager.StoreKeys.OBJECT_CONTENT
+import mono.store.manager.StoreKeys.OBJECT_FOLDER_PATH
 import mono.store.manager.StoreKeys.OBJECT_LAST_MODIFIED
 import mono.store.manager.StoreKeys.OBJECT_LAST_OPENED
 import mono.store.manager.StoreKeys.OBJECT_NAME
@@ -77,6 +78,21 @@ class WorkspaceObjectDao internal constructor(
         set(value) {
             if (objectDocument.get(OBJECT_NAME) == value) return
             objectDocument.set(OBJECT_NAME, value)
+            lastModifiedTimestampMillis = currentTimeMillis()
+            notifyChange()
+        }
+
+    /**
+     * The slash-separated folder path this drawing belongs to. Empty
+     * string is the root. Paths are normalized by callers; the DAO
+     * stores them verbatim. Mutating the path syncs like any other
+     * content change.
+     */
+    var folderPath: String
+        get() = objectDocument.get(OBJECT_FOLDER_PATH) ?: ""
+        set(value) {
+            if (objectDocument.get(OBJECT_FOLDER_PATH) == value) return
+            objectDocument.set(OBJECT_FOLDER_PATH, value)
             lastModifiedTimestampMillis = currentTimeMillis()
             notifyChange()
         }
