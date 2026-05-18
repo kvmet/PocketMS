@@ -27,6 +27,12 @@ class WorkspaceObjectDao internal constructor(
 
     private val objectDocument: StorageDocument = workspaceDocument.childDocument(objectId)
 
+    // Offset is per-viewer viewport state, not document content. We
+    // persist it to localStorage so the editor restores the user's
+    // last view, but we do NOT notify the sync layer on changes —
+    // panning would otherwise push to the server on every viewport
+    // movement. Offset still rides along on any genuine content sync
+    // because buildInputFromLocal reads it fresh from localStorage.
     var offset: Point
         get() {
             val offsetString = objectDocument.get(OBJECT_OFFSET)
@@ -38,7 +44,6 @@ class WorkspaceObjectDao internal constructor(
         }
         set(value) {
             objectDocument.set(OBJECT_OFFSET, "${value.left}|${value.top}")
-            notifyChange()
         }
 
     var rootGroup: SerializableGroup?
@@ -47,10 +52,10 @@ class WorkspaceObjectDao internal constructor(
             return ShapeSerializationUtil.fromShapeJson(json) as? SerializableGroup
         }
         set(value) {
-            if (value != null) {
-                val json = ShapeSerializationUtil.toShapeJson(value)
-                objectDocument.set(OBJECT_CONTENT, json)
-            }
+            if (value == null) return
+            val json = ShapeSerializationUtil.toShapeJson(value)
+            if (objectDocument.get(OBJECT_CONTENT) == json) return
+            objectDocument.set(OBJECT_CONTENT, json)
             lastModifiedTimestampMillis = currentTimeMillis()
             notifyChange()
         }
@@ -62,6 +67,7 @@ class WorkspaceObjectDao internal constructor(
         }
         set(value) {
             val json = ShapeSerializationUtil.toConnectorsJson(value)
+            if (objectDocument.get(OBJECT_CONNECTORS) == json) return
             objectDocument.set(OBJECT_CONNECTORS, json)
             notifyChange()
         }
@@ -69,6 +75,7 @@ class WorkspaceObjectDao internal constructor(
     var name: String
         get() = objectDocument.get(OBJECT_NAME) ?: DEFAULT_NAME
         set(value) {
+            if (objectDocument.get(OBJECT_NAME) == value) return
             objectDocument.set(OBJECT_NAME, value)
             lastModifiedTimestampMillis = currentTimeMillis()
             notifyChange()
