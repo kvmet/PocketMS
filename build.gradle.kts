@@ -28,6 +28,7 @@ dependencies {
     implementation(projects.lifecycle)
     implementation(projects.remoteClient)
     implementation(projects.remoteSync)
+    implementation(projects.storeDao)
 
     testImplementation(libs.kotlin.test.js)
 }

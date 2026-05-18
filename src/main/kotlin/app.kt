@@ -12,12 +12,15 @@ import mono.app.MonoSketchApplication
 import mono.remote.RemoteClient
 import mono.remote.sync.RemoteSyncManager
 import org.w3c.dom.HTMLDivElement
+import sync.ConflictBanner
 
 fun main() {
     val client = RemoteClient()
     AuthGate(client).start {
-        RemoteSyncManager(client).start()
+        val syncManager = RemoteSyncManager(client)
+        syncManager.start()
             .then {
+                ConflictBanner(syncManager).mount()
                 val application = MonoSketchApplication()
                 if (document.readyState.toString() == "loading") {
                     window.onload = { application.onStart() }

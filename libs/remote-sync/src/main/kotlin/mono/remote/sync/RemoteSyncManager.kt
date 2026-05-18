@@ -50,6 +50,15 @@ class RemoteSyncManager(
     private val pushingInFlight = mutableSetOf<String>()
     private val pausedConflicts = mutableMapOf<String, Int>()
 
+    /**
+     * Notified whenever the set of paused (conflicting) drawings
+     * changes. The map is objectId -> server-side current version at
+     * the moment of the conflict.
+     */
+    var conflictListener: ((Map<String, Int>) -> Unit)? = null
+
+    val activeConflicts: Map<String, Int> get() = pausedConflicts.toMap()
+
     fun start(): Promise<Unit> {
         val userId = client.currentSession?.userId
             ?: return Promise.reject(
@@ -99,7 +108,7 @@ class RemoteSyncManager(
 
     private fun onLocalRemove(objectId: String) {
         pendingTimers.remove(objectId)?.let { window.clearTimeout(it) }
-        pausedConflicts.remove(objectId)
+        if (pausedConflicts.remove(objectId) != null) notifyConflictListener()
         val info = SyncMetadata.get(objectId)
         SyncMetadata.remove(objectId)
         val recordId = info?.pbRecordId ?: return
@@ -184,10 +193,51 @@ class RemoteSyncManager(
             recoverStaleRecord(objectId)
         } else {
             pausedConflicts[objectId] = currentVersion
+            notifyConflictListener()
             console.warn(
                 "Sync paused for $objectId: server is at version $currentVersion"
             )
         }
+    }
+
+    /**
+     * User picked "use server" in the conflict banner. Pull the server
+     * copy, write it into local storage via StorageDocument (no
+     * listener firing), update metadata, clear the conflict. Caller is
+     * expected to reload the page so the in-memory editor state
+     * resyncs from the now-updated cache.
+     */
+    fun reloadFromServer(objectId: String): Promise<Unit> =
+        client.getDrawing(objectId).then { drawing ->
+            mirrorToLocal(drawing)
+            SyncMetadata.set(
+                objectId,
+                DrawingSyncInfo(
+                    pbRecordId = drawing.id,
+                    loadedVersion = drawing.version,
+                ),
+            )
+            pausedConflicts.remove(objectId)
+            notifyConflictListener()
+            Unit
+        }
+
+    /**
+     * User picked "keep mine" in the conflict banner. Adopt the
+     * server's current version as our loadedVersion so the next push's
+     * X-Expected-Version matches, then schedule a push of the current
+     * local state.
+     */
+    fun overwriteServer(objectId: String) {
+        val current = pausedConflicts.remove(objectId) ?: return
+        val info = SyncMetadata.get(objectId) ?: return
+        SyncMetadata.set(objectId, info.copy(loadedVersion = current))
+        notifyConflictListener()
+        scheduleDebounce(objectId)
+    }
+
+    private fun notifyConflictListener() {
+        conflictListener?.invoke(pausedConflicts.toMap())
     }
 
     private fun recoverStaleRecord(objectId: String) {
